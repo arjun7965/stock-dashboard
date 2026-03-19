@@ -93,10 +93,13 @@ hist = fetch_price_data(ticker, period)
 
 # Fetch extended history for MA calculation on shorter periods
 @st.cache_data(ttl=300)
-def fetch_ma_data(ticker: str, ma_period: int) -> pd.Series:
-    """Fetch enough daily history to compute the full moving average."""
+def fetch_ma_data(ticker: str, ma_period: int, display_period: str) -> pd.Series:
+    """Fetch enough daily history to compute the full moving average across the display range."""
+    # Calendar days needed for the display period + MA warmup
+    display_days = {"3mo": 90, "6mo": 180, "1y": 365, "5y": 1825}
+    total_days = display_days.get(display_period, 365) + int(ma_period * 1.5)  # 1.5x for weekends/holidays
     tk = yf.Ticker(ticker)
-    ma_hist = tk.history(period=f"{ma_period * 2}d")
+    ma_hist = tk.history(period=f"{total_days}d")
     if ma_hist.empty:
         return pd.Series(dtype=float)
     ma_hist.index = ma_hist.index.tz_localize(None)
@@ -144,7 +147,7 @@ fig_price.add_trace(
 
 # Moving average (use extended history so MA covers full display range)
 if period not in ("1d", "5d"):
-    ma_series = fetch_ma_data(ticker, ma_period)
+    ma_series = fetch_ma_data(ticker, ma_period, period)
     # Trim to the display period
     ma_display = ma_series.reindex(hist.index)
     if ma_display.notna().any():
