@@ -60,11 +60,15 @@ def fetch_options_iv(ticker: str):
     return calls, puts, expirations[0]
 
 
-def compute_realized_vol(prices: pd.Series, window: int, annualize: bool) -> pd.Series:
+def compute_realized_vol(prices: pd.Series, window: int, annualize: bool, period: str) -> pd.Series:
     log_returns = np.log(prices / prices.shift(1))
-    rv = log_returns.rolling(window=window).std()
+    # Scale window by bars-per-day for intraday periods so "20d" means 20 trading days
+    bars_per_day = {"1d": 78, "5d": 26}  # 6.5hrs: 78 x 5min, 26 x 15min
+    effective_window = window * bars_per_day.get(period, 1)
+    rv = log_returns.rolling(window=effective_window, min_periods=1).std()
     if annualize:
-        rv = rv * np.sqrt(252)
+        factor = 252 * bars_per_day.get(period, 1)
+        rv = rv * np.sqrt(factor)
     return rv
 
 
@@ -170,7 +174,7 @@ st.plotly_chart(fig_price, use_container_width=True)
 # --- Realized Volatility chart ---
 st.subheader(f"{ticker} — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
 
-rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize)
+rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
 
 fig_rv = go.Figure()
 fig_rv.add_trace(
