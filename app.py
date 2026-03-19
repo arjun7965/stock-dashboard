@@ -152,7 +152,7 @@ fig_price.add_trace(
 # Hide non-trading gaps (weekends + after hours for intraday)
 rangebreaks = [dict(bounds=["sat", "mon"])]  # hide weekends
 if period in ("1d", "5d"):
-    rangebreaks.append(dict(bounds=[20, 4], pattern="hour"))  # hide after-hours (8pm-4am ET)
+    rangebreaks.append(dict(bounds=[16, 9.5], pattern="hour"))  # hide non-trading hours (4pm-9:30am ET)
 
 fig_price.update_layout(
     height=600,
