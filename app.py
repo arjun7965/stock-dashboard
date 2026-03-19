@@ -13,16 +13,7 @@ st.title("Stock Dashboard")
 with st.sidebar:
     st.header("Settings")
     ticker = st.text_input("Ticker", value="AAPL").upper().strip()
-    period_options = {
-        "1 Month": "1mo",
-        "3 Months": "3mo",
-        "6 Months": "6mo",
-        "1 Year": "1y",
-        "2 Years": "2y",
-        "5 Years": "5y",
-    }
-    period_label = st.selectbox("Period", list(period_options.keys()), index=3)
-    period = period_options[period_label]
+    st.markdown("---")
 
     rv_window = st.slider("Realized Vol Window (days)", 5, 60, 20)
     rv_annualize = st.checkbox("Annualize Realized Vol", value=True)
@@ -34,7 +25,13 @@ with st.sidebar:
 @st.cache_data(ttl=300)
 def fetch_price_data(ticker: str, period: str) -> pd.DataFrame:
     tk = yf.Ticker(ticker)
-    hist = tk.history(period=period)
+    # Use appropriate interval for short periods
+    if period == "1d":
+        hist = tk.history(period="1d", interval="5m")
+    elif period == "5d":
+        hist = tk.history(period="5d", interval="15m")
+    else:
+        hist = tk.history(period=period)
     if hist.empty:
         return pd.DataFrame()
     hist.index = hist.index.tz_localize(None)
@@ -69,6 +66,18 @@ def compute_realized_vol(prices: pd.Series, window: int, annualize: bool) -> pd.
         rv = rv * np.sqrt(252)
     return rv
 
+
+# --- Period toggle buttons ---
+period_options = {"1D": "1d", "5D": "5d", "3M": "3mo", "6M": "6mo", "1Y": "1y", "5Y": "5y"}
+cols = st.columns(len(period_options) + 4)  # extra cols for spacing
+for i, (label, val) in enumerate(period_options.items()):
+    if cols[i].button(label, use_container_width=True):
+        st.session_state["period"] = val
+
+if "period" not in st.session_state:
+    st.session_state["period"] = "1y"
+
+period = st.session_state["period"]
 
 # --- Fetch data ---
 if not ticker:
