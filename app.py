@@ -109,6 +109,18 @@ if hist.empty:
     st.error(f"No data found for **{ticker}**. Check the symbol and try again.")
     st.stop()
 
+# --- Fetch company name ---
+@st.cache_data(ttl=3600)
+def get_company_name(ticker: str) -> str:
+    try:
+        info = yf.Ticker(ticker).info
+        return info.get("shortName") or info.get("longName") or ticker
+    except Exception:
+        return ticker
+
+company_name = get_company_name(ticker)
+st.markdown(f"## {company_name} ({ticker})")
+
 # --- Company info header ---
 info_col1, info_col2, info_col3, info_col4 = st.columns(4)
 latest = hist.iloc[-1]
@@ -122,7 +134,7 @@ info_col3.metric("Day High", f"${latest['High']:.2f}")
 info_col4.metric("Day Low", f"${latest['Low']:.2f}")
 
 # --- Price + Volume chart ---
-st.subheader(f"{ticker} — Price & Volume")
+st.subheader(f"{company_name} ({ticker}) — Price & Volume")
 
 fig_price = make_subplots(
     rows=2, cols=1,
@@ -190,7 +202,7 @@ fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 st.plotly_chart(fig_price, use_container_width=True)
 
 # --- Realized Volatility chart ---
-st.subheader(f"{ticker} — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
+st.subheader(f"{company_name} ({ticker}) — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
 
 rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
 
@@ -215,7 +227,7 @@ st.plotly_chart(fig_rv, use_container_width=True)
 
 # --- Options IV ---
 if show_options:
-    st.subheader(f"{ticker} — Implied Volatility (Nearest Expiry)")
+    st.subheader(f"{company_name} ({ticker}) — Implied Volatility (Nearest Expiry)")
 
     calls, puts, expiry = fetch_options_iv(ticker)
 
