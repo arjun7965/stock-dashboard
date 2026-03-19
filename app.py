@@ -148,12 +148,19 @@ fig_price.add_trace(
     row=2, col=1,
 )
 
+# Hide non-trading gaps (weekends + after hours for intraday)
+rangebreaks = [dict(bounds=["sat", "mon"])]  # hide weekends
+if period in ("1d", "5d"):
+    rangebreaks.append(dict(bounds=[20, 4], pattern="hour"))  # hide after-hours (8pm-4am ET)
+
 fig_price.update_layout(
     height=600,
     xaxis_rangeslider_visible=False,
     showlegend=True,
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
 )
+fig_price.update_xaxes(rangebreaks=rangebreaks, row=1, col=1)
+fig_price.update_xaxes(rangebreaks=rangebreaks, row=2, col=1)
 fig_price.update_yaxes(title_text="Price ($)", row=1, col=1)
 fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 
@@ -179,6 +186,7 @@ fig_rv.update_layout(
     height=350,
     yaxis_title="Realized Vol (%)",
     xaxis_title="Date",
+    xaxis=dict(rangebreaks=rangebreaks),
 )
 st.plotly_chart(fig_rv, use_container_width=True)
 
