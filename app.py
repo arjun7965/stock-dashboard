@@ -19,6 +19,7 @@ with st.sidebar:
     rv_annualize = st.checkbox("Annualize Realized Vol", value=True)
 
     st.markdown("---")
+    ma_period = st.radio("Moving Average", [100, 200], horizontal=True)
     show_options = st.checkbox("Show Options IV", value=True)
 
 
@@ -126,13 +127,13 @@ fig_price.add_trace(
     row=1, col=1,
 )
 
-# 20-day moving average
-if len(hist) >= 20:
+# Moving average
+if len(hist) >= ma_period:
     fig_price.add_trace(
         go.Scatter(
             x=hist.index,
-            y=hist["Close"].rolling(20).mean(),
-            name="20d MA",
+            y=hist["Close"].rolling(ma_period).mean(),
+            name=f"{ma_period}d MA",
             line=dict(color="orange", width=1),
         ),
         row=1, col=1,
