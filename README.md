@@ -4,7 +4,7 @@ A Streamlit web app for charting stock price, volume, realized volatility, and i
 
 ## Live Demo
 
-[https://arjun7965-stock-dashboard.streamlit.app](https://arjun7965-stock-dashboard.streamlit.app)
+[https://stock-dashboard-av.streamlit.app](https://stock-dashboard-av.streamlit.app)
 
 ## Features
 
