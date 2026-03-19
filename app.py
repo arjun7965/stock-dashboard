@@ -91,6 +91,17 @@ if not ticker:
 
 hist = fetch_price_data(ticker, period)
 
+# Fetch extended history for MA calculation on shorter periods
+@st.cache_data(ttl=300)
+def fetch_ma_data(ticker: str, ma_period: int) -> pd.Series:
+    """Fetch enough daily history to compute the full moving average."""
+    tk = yf.Ticker(ticker)
+    ma_hist = tk.history(period=f"{ma_period * 2}d")
+    if ma_hist.empty:
+        return pd.Series(dtype=float)
+    ma_hist.index = ma_hist.index.tz_localize(None)
+    return ma_hist["Close"].rolling(ma_period).mean()
+
 if hist.empty:
     st.error(f"No data found for **{ticker}**. Check the symbol and try again.")
     st.stop()
@@ -131,17 +142,21 @@ fig_price.add_trace(
     row=1, col=1,
 )
 
-# Moving average
-if len(hist) >= ma_period:
-    fig_price.add_trace(
-        go.Scatter(
-            x=hist.index,
-            y=hist["Close"].rolling(ma_period).mean(),
-            name=f"{ma_period}d MA",
-            line=dict(color="orange", width=1),
-        ),
-        row=1, col=1,
-    )
+# Moving average (use extended history so MA covers full display range)
+if period not in ("1d", "5d"):
+    ma_series = fetch_ma_data(ticker, ma_period)
+    # Trim to the display period
+    ma_display = ma_series.reindex(hist.index)
+    if ma_display.notna().any():
+        fig_price.add_trace(
+            go.Scatter(
+                x=ma_display.index,
+                y=ma_display,
+                name=f"{ma_period}d MA",
+                line=dict(color="orange", width=1),
+            ),
+            row=1, col=1,
+        )
 
 # Volume bars colored by direction
 colors = [
