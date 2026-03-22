@@ -219,7 +219,6 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
         inc = tk.quarterly_income_stmt
         if inc is None or inc.empty:
             return pd.DataFrame()
-        # Get last 4 quarters
         cols = inc.columns[:4]
         rows = {}
         for key in ("Total Revenue", "Net Income", "Basic EPS", "Diluted EPS"):
@@ -230,7 +229,6 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
         df = pd.DataFrame(rows, index=cols)
         df.index = df.index.strftime("%b %Y")
         df.index.name = "Quarter"
-        # Format large numbers
         for col in ("Total Revenue", "Net Income"):
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: f"${x / 1e9:.2f}B" if pd.notna(x) else "N/A")
@@ -241,10 +239,76 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+
+@st.cache_data(ttl=3600)
+def fetch_eps_history(ticker: str) -> pd.DataFrame:
+    try:
+        tk = yf.Ticker(ticker)
+        hist = tk.earnings_history
+        if hist is None or hist.empty:
+            return pd.DataFrame()
+        df = hist[["epsEstimate", "epsActual", "epsDifference", "surprisePercent"]].copy()
+        df.index = df.index.strftime("%b %Y")
+        df.index.name = "Quarter"
+        df.columns = ["EPS Estimate", "EPS Actual", "EPS Beat/Miss", "Surprise %"]
+        df["Surprise %"] = df["Surprise %"].apply(lambda x: f"{x * 100:+.1f}%" if pd.notna(x) else "N/A")
+        df["EPS Estimate"] = df["EPS Estimate"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        df["EPS Actual"] = df["EPS Actual"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        df["EPS Beat/Miss"] = df["EPS Beat/Miss"].apply(lambda x: f"${x:+.2f}" if pd.notna(x) else "N/A")
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)
+def fetch_estimates(ticker: str):
+    try:
+        tk = yf.Ticker(ticker)
+        eps_est = tk.earnings_estimate
+        rev_est = tk.revenue_estimate
+        return eps_est, rev_est
+    except Exception:
+        return None, None
+
+
 earnings_df = fetch_earnings(ticker)
-if not earnings_df.empty:
-    st.subheader(f"{company_name} ({ticker}) — Recent Earnings (Last 4 Quarters)")
-    st.dataframe(earnings_df, use_container_width=True)
+eps_hist_df = fetch_eps_history(ticker)
+
+if not earnings_df.empty or not eps_hist_df.empty:
+    st.subheader(f"{company_name} ({ticker}) — Earnings")
+
+    if not earnings_df.empty:
+        st.caption("**Revenue & Income (Last 4 Quarters)**")
+        st.dataframe(earnings_df, use_container_width=True)
+
+    if not eps_hist_df.empty:
+        st.caption("**EPS: Analyst Estimate vs Actual**")
+        st.dataframe(eps_hist_df, use_container_width=True)
+
+    # Forward estimates
+    eps_est, rev_est = fetch_estimates(ticker)
+    if eps_est is not None and not eps_est.empty:
+        st.caption("**Forward Estimates**")
+        est_col1, est_col2 = st.columns(2)
+        with est_col1:
+            st.markdown("**EPS Estimates**")
+            eps_display = eps_est[["avg", "low", "high", "numberOfAnalysts"]].copy()
+            eps_display.columns = ["Avg", "Low", "High", "# Analysts"]
+            eps_display.index = ["Current Qtr", "Next Qtr", "Current Year", "Next Year"]
+            for col in ("Avg", "Low", "High"):
+                eps_display[col] = eps_display[col].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+            eps_display["# Analysts"] = eps_display["# Analysts"].astype(int)
+            st.dataframe(eps_display, use_container_width=True)
+        if rev_est is not None and not rev_est.empty:
+            with est_col2:
+                st.markdown("**Revenue Estimates**")
+                rev_display = rev_est[["avg", "low", "high", "numberOfAnalysts"]].copy()
+                rev_display.columns = ["Avg", "Low", "High", "# Analysts"]
+                rev_display.index = ["Current Qtr", "Next Qtr", "Current Year", "Next Year"]
+                for col in ("Avg", "Low", "High"):
+                    rev_display[col] = rev_display[col].apply(lambda x: f"${x / 1e9:.2f}B" if pd.notna(x) else "N/A")
+                rev_display["# Analysts"] = rev_display["# Analysts"].astype(int)
+                st.dataframe(rev_display, use_container_width=True)
 
 # --- Realized Volatility ---
 rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
