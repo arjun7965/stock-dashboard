@@ -211,6 +211,34 @@ fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 
 st.plotly_chart(fig_price, use_container_width=True)
 
+# --- Earnings (last 4 quarters) ---
+@st.cache_data(ttl=3600)
+def fetch_earnings(ticker: str) -> pd.DataFrame:
+    try:
+        tk = yf.Ticker(ticker)
+        earnings = tk.quarterly_earnings
+        if earnings is not None and not earnings.empty:
+            return earnings.tail(4).iloc[::-1]  # most recent first
+    except Exception:
+        pass
+    # Fallback: try earnings_dates
+    try:
+        tk = yf.Ticker(ticker)
+        dates = tk.earnings_dates
+        if dates is not None and not dates.empty:
+            # Filter to past dates with actual EPS
+            past = dates[dates.index <= pd.Timestamp.now()].head(4)
+            if not past.empty:
+                return past
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+earnings_df = fetch_earnings(ticker)
+if not earnings_df.empty:
+    st.subheader(f"{company_name} ({ticker}) — Recent Earnings")
+    st.dataframe(earnings_df, use_container_width=True)
+
 # --- Realized Volatility ---
 rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
 
