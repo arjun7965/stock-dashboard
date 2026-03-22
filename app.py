@@ -10,12 +10,13 @@ st.set_page_config(page_title="Stock Dashboard", layout="wide")
 st.title("Stock Dashboard")
 
 # --- Top bar: ticker search + settings ---
-top_col1, top_col2, top_col3, top_col4, top_col5 = st.columns([2, 1, 1, 1, 1])
+top_col1, top_col2, top_col3, top_col4, top_col5, top_col6 = st.columns([2, 1, 1, 1, 1, 1])
 ticker = top_col1.text_input("Ticker", value="AAPL").upper().strip()
 rv_window = top_col2.slider("RV Window (days)", 5, 60, 20)
 rv_annualize = top_col3.checkbox("Annualize RV", value=True)
 ma_period = top_col4.radio("Moving Average", [100, 200], horizontal=True)
-show_options = top_col5.checkbox("Show Options IV", value=True)
+show_rv = top_col5.checkbox("Show Realized Vol", value=True)
+show_options = top_col6.checkbox("Show Options IV", value=True)
 
 
 @st.cache_data(ttl=300)
@@ -210,29 +211,30 @@ fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 
 st.plotly_chart(fig_price, use_container_width=True)
 
-# --- Realized Volatility chart ---
-st.subheader(f"{company_name} ({ticker}) — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
-
+# --- Realized Volatility ---
 rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
 
-fig_rv = go.Figure()
-fig_rv.add_trace(
-    go.Scatter(
-        x=hist.index,
-        y=rv * 100,
-        name=f"{rv_window}d RV",
-        line=dict(color="#7e57c2", width=2),
-        fill="tozeroy",
-        fillcolor="rgba(126,87,194,0.15)",
+if show_rv:
+    st.subheader(f"{company_name} ({ticker}) — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
+
+    fig_rv = go.Figure()
+    fig_rv.add_trace(
+        go.Scatter(
+            x=hist.index,
+            y=rv * 100,
+            name=f"{rv_window}d RV",
+            line=dict(color="#7e57c2", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(126,87,194,0.15)",
+        )
     )
-)
-fig_rv.update_layout(
-    height=350,
-    yaxis_title="Realized Vol (%)",
-    xaxis_title="Date",
-    xaxis=dict(rangebreaks=rangebreaks),
-)
-st.plotly_chart(fig_rv, use_container_width=True)
+    fig_rv.update_layout(
+        height=350,
+        yaxis_title="Realized Vol (%)",
+        xaxis_title="Date",
+        xaxis=dict(rangebreaks=rangebreaks),
+    )
+    st.plotly_chart(fig_rv, use_container_width=True)
 
 # --- Options IV ---
 if show_options:
