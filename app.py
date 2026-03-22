@@ -219,22 +219,42 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
         inc = tk.quarterly_income_stmt
         if inc is None or inc.empty:
             return pd.DataFrame()
-        cols = inc.columns[:4]
+        # Grab up to 8 quarters to compute YoY growth for the latest 4
+        all_cols = inc.columns[:8]
+        display_cols = inc.columns[:4]
         rows = {}
-        for key in ("Total Revenue", "Net Income", "Basic EPS", "Diluted EPS"):
+        for key in ("Total Revenue", "Net Income"):
             if key in inc.index:
-                rows[key] = inc.loc[key, cols]
+                rows[key] = inc.loc[key, all_cols]
         if not rows:
             return pd.DataFrame()
-        df = pd.DataFrame(rows, index=cols)
-        df.index = df.index.strftime("%b %Y")
+        raw = pd.DataFrame(rows, index=all_cols)
+
+        # Build display table with YoY growth
+        result = []
+        for i, col in enumerate(display_cols):
+            row = {"Quarter": col.strftime("%b %Y")}
+            for metric in ("Total Revenue", "Net Income"):
+                if metric not in raw.columns:
+                    continue
+                val = raw.loc[col, metric]
+                row[metric] = f"${val / 1e9:.2f}B" if pd.notna(val) else "N/A"
+                # YoY: compare to same quarter last year (4 quarters back)
+                yoy_idx = i + 4
+                if yoy_idx < len(all_cols):
+                    prev_val = raw.loc[all_cols[yoy_idx], metric]
+                    if pd.notna(val) and pd.notna(prev_val) and prev_val != 0:
+                        growth = (val - prev_val) / abs(prev_val) * 100
+                        arrow = "🟢 ▲" if growth >= 0 else "🔴 ▼"
+                        row[f"{metric} YoY"] = f"{arrow} {growth:+.1f}%"
+                    else:
+                        row[f"{metric} YoY"] = "N/A"
+                else:
+                    row[f"{metric} YoY"] = "N/A"
+            result.append(row)
+
+        df = pd.DataFrame(result).set_index("Quarter")
         df.index.name = "Quarter"
-        for col in ("Total Revenue", "Net Income"):
-            if col in df.columns:
-                df[col] = df[col].apply(lambda x: f"${x / 1e9:.2f}B" if pd.notna(x) else "N/A")
-        for col in ("Basic EPS", "Diluted EPS"):
-            if col in df.columns:
-                df[col] = df[col].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
         return df
     except Exception:
         return pd.DataFrame()
@@ -250,12 +270,20 @@ def fetch_eps_history(ticker: str) -> pd.DataFrame:
         df = hist[["epsEstimate", "epsActual", "epsDifference", "surprisePercent"]].copy()
         df.index = df.index.strftime("%b %Y")
         df.index.name = "Quarter"
-        df.columns = ["EPS Estimate", "EPS Actual", "EPS Beat/Miss", "Surprise %"]
-        df["Surprise %"] = df["Surprise %"].apply(lambda x: f"{x * 100:+.1f}%" if pd.notna(x) else "N/A")
-        df["EPS Estimate"] = df["EPS Estimate"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-        df["EPS Actual"] = df["EPS Actual"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-        df["EPS Beat/Miss"] = df["EPS Beat/Miss"].apply(lambda x: f"${x:+.2f}" if pd.notna(x) else "N/A")
-        return df
+
+        def fmt_result(row):
+            diff = row["epsDifference"]
+            pct = row["surprisePercent"]
+            if pd.isna(diff):
+                return "N/A"
+            arrow = "🟢 ▲" if diff >= 0 else "🔴 ▼"
+            pct_str = f"{pct * 100:+.1f}%" if pd.notna(pct) else ""
+            return f"{arrow} ${diff:+.2f} ({pct_str})"
+
+        df["Result"] = df.apply(fmt_result, axis=1)
+        df["EPS Estimate"] = df["epsEstimate"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        df["EPS Actual"] = df["epsActual"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        return df[["EPS Estimate", "EPS Actual", "Result"]]
     except Exception:
         return pd.DataFrame()
 
