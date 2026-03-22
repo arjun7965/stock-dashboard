@@ -219,8 +219,8 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
         inc = tk.quarterly_income_stmt
         if inc is None or inc.empty:
             return pd.DataFrame()
-        # Grab up to 8 quarters to compute YoY growth for the latest 4
-        all_cols = inc.columns[:8]
+        # Grab 5 quarters so we can compute QoQ for the latest 4
+        all_cols = inc.columns[:5]
         display_cols = inc.columns[:4]
         rows = {}
         for key in ("Total Revenue", "Net Income"):
@@ -230,7 +230,7 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
             return pd.DataFrame()
         raw = pd.DataFrame(rows, index=all_cols)
 
-        # Build display table with YoY growth
+        # Build display table with QoQ growth
         result = []
         for i, col in enumerate(display_cols):
             row = {"Quarter": col.strftime("%b %Y")}
@@ -239,18 +239,18 @@ def fetch_earnings(ticker: str) -> pd.DataFrame:
                     continue
                 val = raw.loc[col, metric]
                 row[metric] = f"${val / 1e9:.2f}B" if pd.notna(val) else "N/A"
-                # YoY: compare to same quarter last year (4 quarters back)
-                yoy_idx = i + 4
-                if yoy_idx < len(all_cols):
-                    prev_val = raw.loc[all_cols[yoy_idx], metric]
+                # QoQ: compare to previous quarter (next index since sorted most recent first)
+                prev_idx = i + 1
+                if prev_idx < len(all_cols):
+                    prev_val = raw.loc[all_cols[prev_idx], metric]
                     if pd.notna(val) and pd.notna(prev_val) and prev_val != 0:
                         growth = (val - prev_val) / abs(prev_val) * 100
                         arrow = "🟢 ▲" if growth >= 0 else "🔴 ▼"
-                        row[f"{metric} YoY"] = f"{arrow} {growth:+.1f}%"
+                        row[f"{metric} QoQ"] = f"{arrow} {growth:+.1f}%"
                     else:
-                        row[f"{metric} YoY"] = "N/A"
+                        row[f"{metric} QoQ"] = "N/A"
                 else:
-                    row[f"{metric} YoY"] = "N/A"
+                    row[f"{metric} QoQ"] = "N/A"
             result.append(row)
 
         df = pd.DataFrame(result).set_index("Quarter")
