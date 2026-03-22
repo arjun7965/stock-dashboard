@@ -216,27 +216,34 @@ st.plotly_chart(fig_price, use_container_width=True)
 def fetch_earnings(ticker: str) -> pd.DataFrame:
     try:
         tk = yf.Ticker(ticker)
-        earnings = tk.quarterly_earnings
-        if earnings is not None and not earnings.empty:
-            return earnings.tail(4).iloc[::-1]  # most recent first
+        inc = tk.quarterly_income_stmt
+        if inc is None or inc.empty:
+            return pd.DataFrame()
+        # Get last 4 quarters
+        cols = inc.columns[:4]
+        rows = {}
+        for key in ("Total Revenue", "Net Income", "Basic EPS", "Diluted EPS"):
+            if key in inc.index:
+                rows[key] = inc.loc[key, cols]
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, index=cols)
+        df.index = df.index.strftime("%b %Y")
+        df.index.name = "Quarter"
+        # Format large numbers
+        for col in ("Total Revenue", "Net Income"):
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: f"${x / 1e9:.2f}B" if pd.notna(x) else "N/A")
+        for col in ("Basic EPS", "Diluted EPS"):
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        return df
     except Exception:
-        pass
-    # Fallback: try earnings_dates
-    try:
-        tk = yf.Ticker(ticker)
-        dates = tk.earnings_dates
-        if dates is not None and not dates.empty:
-            # Filter to past dates with actual EPS
-            past = dates[dates.index <= pd.Timestamp.now()].head(4)
-            if not past.empty:
-                return past
-    except Exception:
-        pass
-    return pd.DataFrame()
+        return pd.DataFrame()
 
 earnings_df = fetch_earnings(ticker)
 if not earnings_df.empty:
-    st.subheader(f"{company_name} ({ticker}) — Recent Earnings")
+    st.subheader(f"{company_name} ({ticker}) — Recent Earnings (Last 4 Quarters)")
     st.dataframe(earnings_df, use_container_width=True)
 
 # --- Realized Volatility ---
