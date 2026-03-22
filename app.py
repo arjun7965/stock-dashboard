@@ -9,18 +9,13 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 st.title("Stock Dashboard")
 
-# --- Sidebar controls ---
-with st.sidebar:
-    st.header("Settings")
-    ticker = st.text_input("Ticker", value="AAPL").upper().strip()
-    st.markdown("---")
-
-    rv_window = st.slider("Realized Vol Window (days)", 5, 60, 20)
-    rv_annualize = st.checkbox("Annualize Realized Vol", value=True)
-
-    st.markdown("---")
-    ma_period = st.radio("Moving Average", [100, 200], horizontal=True)
-    show_options = st.checkbox("Show Options IV", value=True)
+# --- Top bar: ticker search + settings ---
+top_col1, top_col2, top_col3, top_col4, top_col5 = st.columns([2, 1, 1, 1, 1])
+ticker = top_col1.text_input("Ticker", value="AAPL").upper().strip()
+rv_window = top_col2.slider("RV Window (days)", 5, 60, 20)
+rv_annualize = top_col3.checkbox("Annualize RV", value=True)
+ma_period = top_col4.radio("Moving Average", [100, 200], horizontal=True)
+show_options = top_col5.checkbox("Show Options IV", value=True)
 
 
 @st.cache_data(ttl=300)
