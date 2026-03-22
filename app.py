@@ -108,10 +108,24 @@ if hist.empty:
 @st.cache_data(ttl=3600)
 def get_company_name(ticker: str) -> str:
     try:
-        info = yf.Ticker(ticker).info
-        return info.get("shortName") or info.get("longName") or ticker
+        tk = yf.Ticker(ticker)
+        info = tk.info or {}
+        for key in ("shortName", "longName", "displayName"):
+            name = info.get(key)
+            if name and name != ticker:
+                return name
     except Exception:
-        return ticker
+        pass
+    # Fallback: yf.Search (available in yfinance >= 0.2.31)
+    try:
+        results = yf.Search(ticker, max_results=1)
+        if results.quotes:
+            name = results.quotes[0].get("shortname") or results.quotes[0].get("longname")
+            if name:
+                return name
+    except Exception:
+        pass
+    return ticker
 
 company_name = get_company_name(ticker)
 st.markdown(f"## {company_name} ({ticker})")
