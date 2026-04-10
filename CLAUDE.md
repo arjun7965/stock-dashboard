@@ -9,13 +9,19 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app runs at `http://localhost:8501`. Live deployment at https://stock-dashboard-av.streamlit.app.
+The app runs at `http://localhost:8501`. No API keys required — all data comes from Yahoo Finance for free.
+
+Live deployment at https://stock-dashboard-av.streamlit.app (deployed via [share.streamlit.io](https://share.streamlit.io)).
+
+There are no tests, linters, or build steps. The entire app is a single file (`app.py`).
 
 ## Architecture
 
 This is a single-file Streamlit app (`app.py`) — a stock dashboard that charts price, volume, realized volatility, and implied volatility using free Yahoo Finance data via `yfinance`.
 
-**Data flow:** All market data is fetched through `yfinance` with Streamlit's `@st.cache_data(ttl=300)` caching (5 min for price data, 1 hour for earnings/company info). There is no database or backend.
+**Data flow:** All market data is fetched through `yfinance` with Streamlit's `@st.cache_data` caching. There is no database or backend. Caching TTLs:
+- 5 min (`ttl=300`): price data, options data, moving average data
+- 1 hour (`ttl=3600`): company name, earnings, EPS history, forward estimates
 
 **Key sections in app.py (top to bottom):**
 - Top bar controls (ticker input, RV settings, MA toggle, feature toggles)
