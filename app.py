@@ -10,13 +10,14 @@ st.set_page_config(page_title="Stock Dashboard", layout="wide")
 st.title("Stock Dashboard")
 
 # --- Top bar: ticker search + settings ---
-top_col1, top_col2, top_col3, top_col4, top_col5, top_col6 = st.columns([2, 1, 1, 1, 1, 1])
+top_col1, top_col2, top_col3, top_col4, top_col5, top_col6, top_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
 ticker = top_col1.text_input("Ticker", value="AAPL").upper().strip()
 rv_window = top_col2.slider("RV Window (days)", 5, 60, 20)
 rv_annualize = top_col3.checkbox("Annualize RV", value=True)
 ma_period = top_col4.radio("Moving Average", [100, 200], horizontal=True)
 show_rv = top_col5.checkbox("Show Realized Vol", value=True)
 show_options = top_col6.checkbox("Show Options IV", value=True)
+show_liquidity = top_col7.checkbox("Show Liquidity", value=False)
 
 
 @st.cache_data(ttl=300)
@@ -142,6 +143,51 @@ info_col1.metric("Close", f"${latest['Close']:.2f}", f"{change:+.2f} ({change_pc
 info_col2.metric("Volume", f"{latest['Volume']:,.0f}")
 info_col3.metric("Day High", f"${latest['High']:.2f}")
 info_col4.metric("Day Low", f"${latest['Low']:.2f}")
+
+
+# --- Liquidity ---
+@st.cache_data(ttl=300)
+def fetch_liquidity_data(ticker: str):
+    tk = yf.Ticker(ticker)
+    info = tk.info or {}
+    hist_30d = tk.history(period="1mo")
+    if hist_30d.empty:
+        return None
+
+    hist_30d.index = hist_30d.index.tz_localize(None)
+    vol = hist_30d["Volume"]
+    price = hist_30d["Close"]
+    dollar_vol = vol * price
+
+    bid = info.get("bid", 0) or 0
+    ask = info.get("ask", 0) or 0
+    mid = (bid + ask) / 2 if bid and ask else 0
+    spread = ask - bid if bid and ask else 0
+    spread_pct = (spread / mid * 100) if mid else 0
+
+    shares = info.get("sharesOutstanding", 0) or 0
+    turnover = (vol / shares * 100).mean() if shares else 0
+
+    # Amihud illiquidity ratio
+    returns = np.log(price / price.shift(1)).dropna()
+    dv = dollar_vol.iloc[1:]
+    amihud = (returns.abs() / dv).mean() * 1e6 if (dv > 0).all() else 0
+
+    # Intraday range
+    intraday_range = ((hist_30d["High"] - hist_30d["Low"]) / hist_30d["Close"] * 100).mean()
+
+    return {
+        "bid": bid, "ask": ask, "spread": spread, "spread_pct": spread_pct,
+        "avg_vol_10d": info.get("averageVolume10days", 0) or 0,
+        "avg_vol_3mo": info.get("averageVolume", 0) or 0,
+        "avg_dollar_vol": dollar_vol.mean(),
+        "turnover": turnover,
+        "amihud": amihud,
+        "intraday_range": intraday_range,
+        "market_cap": info.get("marketCap", 0) or 0,
+        "shares": shares,
+    }
+
 
 # --- Price + Volume chart ---
 st.subheader(f"{company_name} ({ticker}) — Price & Volume")
@@ -337,6 +383,56 @@ if not earnings_df.empty or not eps_hist_df.empty:
                     rev_display[col] = rev_display[col].apply(lambda x: f"${x / 1e9:.2f}B" if pd.notna(x) else "N/A")
                 rev_display["# Analysts"] = rev_display["# Analysts"].astype(int)
                 st.dataframe(rev_display, use_container_width=True)
+
+# --- Liquidity table (below earnings) ---
+if show_liquidity:
+    liq = fetch_liquidity_data(ticker)
+    if liq:
+        st.subheader(f"{company_name} ({ticker}) — Liquidity")
+        avg_vol = liq["avg_vol_3mo"]
+        sp = liq["spread_pct"]
+        if avg_vol > 1_000_000 and sp < 0.1:
+            assessment = "🟢 HIGH — tight spreads, strong volume"
+        elif avg_vol > 500_000 and sp < 0.3:
+            assessment = "🟡 MODERATE — reasonable spreads and volume"
+        elif avg_vol > 100_000:
+            assessment = "🟠 LOW-MODERATE — watch for slippage"
+        else:
+            assessment = "🔴 LOW — significant market impact risk"
+
+        liq_table = pd.DataFrame({
+            "Metric": [
+                "Bid / Ask",
+                "Spread",
+                "Market Cap",
+                "Shares Outstanding",
+                "Avg Volume (10d)",
+                "Avg Volume (3mo)",
+                "Avg Dollar Volume",
+                "Daily Turnover",
+                "Avg Intraday Range",
+                "Amihud Illiquidity (×10⁶)",
+                "Assessment",
+            ],
+            "Value": [
+                f"${liq['bid']:.2f} / ${liq['ask']:.2f}",
+                f"${liq['spread']:.4f} ({liq['spread_pct']:.2f}%)",
+                f"${liq['market_cap'] / 1e9:.2f}B" if liq["market_cap"] >= 1e9 else f"${liq['market_cap'] / 1e6:.0f}M",
+                f"{liq['shares'] / 1e6:.1f}M" if liq["shares"] else "N/A",
+                f"{liq['avg_vol_10d']:,.0f}",
+                f"{avg_vol:,.0f}",
+                f"${liq['avg_dollar_vol'] / 1e6:,.1f}M",
+                f"{liq['turnover']:.2f}%",
+                f"{liq['intraday_range']:.2f}%",
+                f"{liq['amihud']:.4f}",
+                assessment,
+            ],
+        }).set_index("Metric")
+        st.dataframe(liq_table, use_container_width=True)
+        st.markdown(
+            '<sup>ℹ️ <b>Amihud Illiquidity Ratio</b> measures price impact per dollar traded. Lower = more liquid.</sup>',
+            unsafe_allow_html=True,
+        )
 
 # --- Realized Volatility ---
 rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
