@@ -30,7 +30,7 @@ def fetch_price_data(ticker: str, period: str) -> pd.DataFrame:
         hist = tk.history(period="5d", interval="15m")
     else:
         hist = tk.history(period=period)
-    if hist.empty:
+    if hist is None or hist.empty:
         return pd.DataFrame()
     hist.index = hist.index.tz_localize(None)
     return hist
@@ -97,7 +97,7 @@ def fetch_ma_data(ticker: str, ma_period: int, display_period: str) -> pd.Series
     total_days = display_days.get(display_period, 365) + int(ma_period * 1.5)  # 1.5x for weekends/holidays
     tk = yf.Ticker(ticker)
     ma_hist = tk.history(period=f"{total_days}d")
-    if ma_hist.empty:
+    if ma_hist is None or ma_hist.empty:
         return pd.Series(dtype=float)
     ma_hist.index = ma_hist.index.tz_localize(None)
     return ma_hist["Close"].rolling(ma_period).mean()
@@ -151,7 +151,7 @@ def fetch_liquidity_data(ticker: str):
     tk = yf.Ticker(ticker)
     info = tk.info or {}
     hist_30d = tk.history(period="1mo")
-    if hist_30d.empty:
+    if hist_30d is None or hist_30d.empty:
         return None
 
     hist_30d.index = hist_30d.index.tz_localize(None)
