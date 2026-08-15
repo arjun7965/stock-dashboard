@@ -1,6 +1,6 @@
 # Stock Dashboard
 
-A Streamlit web app for charting stock price, volume, realized volatility, and implied volatility using free data from Yahoo Finance.
+A Streamlit web app for charting stock and cryptocurrency price, volume, realized volatility, and implied volatility using free data from Yahoo Finance.
 
 ## Live Demo
 
@@ -15,6 +15,7 @@ A Streamlit web app for charting stock price, volume, realized volatility, and i
 - **Implied volatility smile** — calls and puts IV from nearest expiry options chain
 - **IV vs RV spread** — at-the-money IV compared against current realized vol
 - **Gap-free charts** — weekends and after-hours gaps are hidden automatically
+- **BTC and ETH support** — enter `BTC` or `ETH` for 24/7 crypto charts and crypto-adjusted realized volatility
 
 ## Tech Stack
 

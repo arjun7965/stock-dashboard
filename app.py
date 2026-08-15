@@ -9,9 +9,27 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 st.title("Stock Dashboard")
 
+CRYPTO_ALIASES = {
+    "BTC": "BTC-USD",
+    "ETH": "ETH-USD",
+}
+
+
+def normalize_ticker(symbol: str) -> str:
+    """Map common crypto symbols to their Yahoo Finance tickers."""
+    normalized = symbol.upper().strip()
+    return CRYPTO_ALIASES.get(normalized, normalized)
+
+
 # --- Top bar: ticker search + settings ---
 top_col1, top_col2, top_col3, top_col4, top_col5, top_col6, top_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
-ticker = top_col1.text_input("Ticker", value="AAPL").upper().strip()
+ticker_input = top_col1.text_input(
+    "Ticker",
+    value="AAPL",
+    help="Enter a stock ticker, BTC, or ETH.",
+)
+ticker = normalize_ticker(ticker_input)
+is_crypto = ticker in CRYPTO_ALIASES.values()
 rv_window = top_col2.slider("RV Window (days)", 5, 60, 20)
 rv_annualize = top_col3.checkbox("Annualize RV", value=True)
 ma_period = top_col4.radio("Moving Average", [100, 200], horizontal=True)
@@ -57,14 +75,21 @@ def fetch_options_iv(ticker: str):
     return calls, puts, expirations[0]
 
 
-def compute_realized_vol(prices: pd.Series, window: int, annualize: bool, period: str) -> pd.Series:
+def compute_realized_vol(
+    prices: pd.Series,
+    window: int,
+    annualize: bool,
+    period: str,
+    is_crypto: bool = False,
+) -> pd.Series:
     log_returns = np.log(prices / prices.shift(1))
-    # Scale window by bars-per-day for intraday periods so "20d" means 20 trading days
-    bars_per_day = {"1d": 78, "5d": 26}  # 6.5hrs: 78 x 5min, 26 x 15min
+    # Scale intraday windows by each market's bars per day.
+    bars_per_day = {"1d": 288, "5d": 96} if is_crypto else {"1d": 78, "5d": 26}
     effective_window = window * bars_per_day.get(period, 1)
     rv = log_returns.rolling(window=effective_window, min_periods=1).std()
     if annualize:
-        factor = 252 * bars_per_day.get(period, 1)
+        trading_days = 365 if is_crypto else 252
+        factor = trading_days * bars_per_day.get(period, 1)
         rv = rv * np.sqrt(factor)
     return rv
 
@@ -239,9 +264,9 @@ fig_price.add_trace(
     row=2, col=1,
 )
 
-# Hide non-trading gaps (weekends + after hours for intraday)
-rangebreaks = [dict(bounds=["sat", "mon"])]  # hide weekends
-if period in ("1d", "5d"):
+# Hide non-trading gaps for equities; cryptocurrencies trade continuously.
+rangebreaks = [] if is_crypto else [dict(bounds=["sat", "mon"])]
+if not is_crypto and period in ("1d", "5d"):
     rangebreaks.append(dict(bounds=[16, 9.5], pattern="hour"))  # hide non-trading hours (4pm-9:30am ET)
 
 fig_price.update_layout(
@@ -345,8 +370,8 @@ def fetch_estimates(ticker: str):
         return None, None
 
 
-earnings_df = fetch_earnings(ticker)
-eps_hist_df = fetch_eps_history(ticker)
+earnings_df = pd.DataFrame() if is_crypto else fetch_earnings(ticker)
+eps_hist_df = pd.DataFrame() if is_crypto else fetch_eps_history(ticker)
 
 if not earnings_df.empty or not eps_hist_df.empty:
     st.subheader(f"{company_name} ({ticker}) — Earnings")
@@ -385,7 +410,9 @@ if not earnings_df.empty or not eps_hist_df.empty:
                 st.dataframe(rev_display, use_container_width=True)
 
 # --- Liquidity table (below earnings) ---
-if show_liquidity:
+if show_liquidity and is_crypto:
+    st.info("Equity liquidity metrics are not available for spot cryptocurrencies.")
+elif show_liquidity:
     liq = fetch_liquidity_data(ticker)
     if liq:
         st.subheader(f"{company_name} ({ticker}) — Liquidity")
@@ -435,7 +462,13 @@ if show_liquidity:
         )
 
 # --- Realized Volatility ---
-rv = compute_realized_vol(hist["Close"], rv_window, rv_annualize, period)
+rv = compute_realized_vol(
+    hist["Close"],
+    rv_window,
+    rv_annualize,
+    period,
+    is_crypto=is_crypto,
+)
 
 if show_rv:
     st.subheader(f"{company_name} ({ticker}) — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
@@ -460,7 +493,9 @@ if show_rv:
     st.plotly_chart(fig_rv, use_container_width=True)
 
 # --- Options IV ---
-if show_options:
+if show_options and is_crypto:
+    st.info("Listed options IV is not available for spot cryptocurrencies.")
+elif show_options:
     st.subheader(f"{company_name} ({ticker}) — Implied Volatility (Nearest Expiry)")
 
     calls, puts, expiry = fetch_options_iv(ticker)
