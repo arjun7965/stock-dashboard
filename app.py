@@ -94,17 +94,24 @@ def compute_realized_vol(
     return rv
 
 
-# --- Period toggle buttons ---
-period_options = {"1D": "1d", "5D": "5d", "3M": "3mo", "6M": "6mo", "1Y": "1y", "5Y": "5y"}
-cols = st.columns(len(period_options) + 4)  # extra cols for spacing
-for i, (label, val) in enumerate(period_options.items()):
-    if cols[i].button(label, use_container_width=True):
-        st.session_state["period"] = val
-
+period_options = {
+    "1D": "1d",
+    "5D": "5d",
+    "3M": "3mo",
+    "6M": "6mo",
+    "1Y": "1y",
+    "5Y": "5y",
+}
 if "period" not in st.session_state:
     st.session_state["period"] = "1y"
 
 period = st.session_state["period"]
+
+
+def select_period(value: str) -> None:
+    """Update the chart time range before Streamlit reruns the page."""
+    st.session_state["period"] = value
+
 
 # --- Fetch data ---
 if not ticker:
@@ -216,6 +223,17 @@ def fetch_liquidity_data(ticker: str):
 
 # --- Price + Volume chart ---
 st.subheader(f"{company_name} ({ticker}) — Price & Volume")
+st.caption("Time range")
+period_cols = st.columns(len(period_options) + 4)  # extra cols keep the control compact
+for i, (label, value) in enumerate(period_options.items()):
+    period_cols[i].button(
+        label,
+        key=f"period_{value}",
+        type="primary" if period == value else "secondary",
+        use_container_width=True,
+        on_click=select_period,
+        args=(value,),
+    )
 
 fig_price = make_subplots(
     rows=2, cols=1,
