@@ -12,6 +12,7 @@ A Streamlit web app for charting stock and cryptocurrency price, volume, realize
 - **Volume bars** color-coded by price direction (green up, red down)
 - **Period selector** — 1D, 5D, 3M, 6M, 1Y, 5Y with intraday intervals for short timeframes
 - **Sidebar controls** — ticker entry and analysis settings stay out of the chart's way
+- **Ticker search** — type a company name ("Apple") or partial symbol and pick from matching tickers
 - **Realized volatility** — configurable rolling window (5–60 days), optional annualization
 - **Implied volatility smile** — calls and puts IV from nearest expiry options chain, filtered to liquid strikes near the spot price
 - **IV vs RV spread** — at-the-money IV compared against current realized vol

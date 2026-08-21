@@ -35,16 +35,72 @@ def fmt_compact(value: float) -> str:
     return f"{value:,.0f}"
 
 
+@st.cache_data(ttl=3600)
+def search_tickers(query: str) -> list[dict]:
+    """Look up ticker symbols by symbol fragment or company name."""
+    try:
+        results = yf.Search(query, max_results=8)
+        quotes = results.quotes or []
+    except Exception:
+        return []
+    tradable_types = {"EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY", "INDEX"}
+    matches = []
+    seen = set()
+    for quote in quotes:
+        symbol = quote.get("symbol")
+        name = quote.get("shortname") or quote.get("longname")
+        if not symbol or not name or symbol in seen:
+            continue
+        if quote.get("quoteType") not in tradable_types:
+            continue
+        seen.add(symbol)
+        matches.append({
+            "symbol": symbol,
+            "name": " ".join(name.split()),
+            "exchange": quote.get("exchDisp") or quote.get("exchange") or "",
+        })
+    return matches
+
+
 # --- Sidebar: ticker search + settings ---
+if "symbol" not in st.session_state:
+    st.session_state["symbol"] = "AAPL"
+
+
+def pick_symbol(symbol: str) -> None:
+    """Replace the search box contents with a suggested ticker."""
+    st.session_state["symbol"] = symbol
+
+
 with st.sidebar:
     st.header("Settings")
     ticker_input = st.text_input(
-        "Ticker",
-        value="AAPL",
-        help="Enter a stock ticker, BTC, or ETH.",
+        "Ticker or company name",
+        key="symbol",
+        help="Enter a ticker (AAPL), crypto (BTC), or a company name like 'Apple'.",
     )
     ticker = normalize_ticker(ticker_input)
     is_crypto = ticker in CRYPTO_ALIASES.values()
+
+    query = ticker_input.strip()
+    if len(query) >= 2:
+        matches = [m for m in search_tickers(query) if m["symbol"] != ticker]
+        if matches:
+            st.caption("Matching symbols")
+            for match in matches[:5]:
+                name = match["name"]
+                if len(name) > 30:
+                    name = name[:27] + "…"
+                label = f"{match['symbol']} · {name}"
+                if match["exchange"]:
+                    label += f" ({match['exchange']})"
+                st.button(
+                    label,
+                    key=f"pick_{match['symbol']}",
+                    on_click=pick_symbol,
+                    args=(match["symbol"],),
+                    width="stretch",
+                )
 
     st.divider()
     rv_window = st.slider("RV Window (days)", 5, 60, 20)
