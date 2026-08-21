@@ -197,7 +197,7 @@ market_cap = company_info["market_cap"]
 
 info_col1.metric("Close", f"${latest['Close']:.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
 info_col2.metric("Volume", fmt_compact(latest["Volume"]))
-info_col3.metric("Day Range", f"${latest['Low']:.2f} – ${latest['High']:.2f}")
+info_col3.metric("Day Range", f"${latest['Low']:.2f} – {latest['High']:.2f}")
 info_col4.metric("Market Cap", fmt_compact(market_cap) if market_cap else "N/A")
 
 
