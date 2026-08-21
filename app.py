@@ -254,7 +254,7 @@ for i, (label, value) in enumerate(period_options.items()):
         label,
         key=f"period_{value}",
         type="primary" if period == value else "secondary",
-        use_container_width=True,
+        width="stretch",
         on_click=select_period,
         args=(value,),
     )
@@ -325,7 +325,7 @@ fig_price.update_xaxes(rangebreaks=rangebreaks, row=2, col=1)
 fig_price.update_yaxes(title_text="Price ($)", tickprefix="$", row=1, col=1)
 fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 
-st.plotly_chart(fig_price, use_container_width=True)
+st.plotly_chart(fig_price, width="stretch")
 
 # --- Earnings (last 4 quarters) ---
 @st.cache_data(ttl=3600)
@@ -423,11 +423,11 @@ if not earnings_df.empty or not eps_hist_df.empty:
 
     if not earnings_df.empty:
         st.caption("**Revenue & Income (Last 4 Quarters)**")
-        st.dataframe(earnings_df, use_container_width=True)
+        st.dataframe(earnings_df, width="stretch")
 
     if not eps_hist_df.empty:
         st.caption("**EPS: Analyst Estimate vs Actual**")
-        st.dataframe(eps_hist_df, use_container_width=True)
+        st.dataframe(eps_hist_df, width="stretch")
 
     # Forward estimates
     eps_est, rev_est = fetch_estimates(ticker)
@@ -442,7 +442,7 @@ if not earnings_df.empty or not eps_hist_df.empty:
             for col in ("Avg", "Low", "High"):
                 eps_display[col] = eps_display[col].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
             eps_display["# Analysts"] = eps_display["# Analysts"].astype(int)
-            st.dataframe(eps_display, use_container_width=True)
+            st.dataframe(eps_display, width="stretch")
         if rev_est is not None and not rev_est.empty:
             with est_col2:
                 st.markdown("**Revenue Estimates**")
@@ -452,7 +452,7 @@ if not earnings_df.empty or not eps_hist_df.empty:
                 for col in ("Avg", "Low", "High"):
                     rev_display[col] = rev_display[col].apply(lambda x: f"${x / 1e9:.2f}B" if pd.notna(x) else "N/A")
                 rev_display["# Analysts"] = rev_display["# Analysts"].astype(int)
-                st.dataframe(rev_display, use_container_width=True)
+                st.dataframe(rev_display, width="stretch")
 
 # --- Liquidity table (below earnings) ---
 if show_liquidity and is_crypto:
@@ -500,7 +500,7 @@ elif show_liquidity:
                 assessment,
             ],
         }).set_index("Metric")
-        st.dataframe(liq_table, use_container_width=True)
+        st.dataframe(liq_table, width="stretch")
         st.markdown(
             '<sup>ℹ️ <b>Amihud Illiquidity Ratio</b> measures price impact per dollar traded. Lower = more liquid.</sup>',
             unsafe_allow_html=True,
@@ -535,7 +535,7 @@ if show_rv:
         xaxis_title="Date",
         xaxis=dict(rangebreaks=rangebreaks),
     )
-    st.plotly_chart(fig_rv, use_container_width=True)
+    st.plotly_chart(fig_rv, width="stretch")
 
 def render_iv_section(ticker: str, spot: float, rv: pd.Series) -> None:
     """Render the IV smile chart plus ATM IV vs RV summary stats."""
@@ -599,7 +599,7 @@ def render_iv_section(ticker: str, spot: float, rv: pd.Series) -> None:
         xaxis_title="Strike Price ($)",
         yaxis_title="Implied Volatility (%)",
     )
-    st.plotly_chart(fig_iv, use_container_width=True)
+    st.plotly_chart(fig_iv, width="stretch")
 
     # IV summary stats
     avg_atm_iv = float("nan")
