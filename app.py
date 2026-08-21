@@ -1,3 +1,5 @@
+import re
+
 import streamlit as st
 import yfinance as yf
 from streamlit_searchbox import st_searchbox
@@ -111,6 +113,16 @@ with st.sidebar:
     seen_symbols = st.session_state.setdefault("seen_symbols", set())
     ticker = st.session_state.get("active_ticker", DEFAULT_TICKER)
 
+    # Treat ?t= links (sharing or browser back/forward) as direct entries.
+    url_ticker = normalize_ticker((st.query_params.get("t") or "").upper())
+    if (
+        url_ticker
+        and re.fullmatch(r"[A-Z0-9.\-=^]{1,15}", url_ticker)
+        and url_ticker != st.session_state.get("synced_ticker")
+    ):
+        seen_symbols.add(url_ticker)
+        ticker = url_ticker
+
     # Only suggestion values (or crypto aliases) trigger a load; anything
     # else is treated as an in-progress search and keeps the current chart.
     if selection:
@@ -205,8 +217,20 @@ period_options = {
     "1Y": "1y",
     "5Y": "5y",
 }
-if "period" not in st.session_state:
-    st.session_state["period"] = "1y"
+# Browser navigation to a different ?p= value wins over stale session state;
+# otherwise seed the default once.
+url_period = st.query_params.get("p")
+if (
+    url_period
+    and url_period in period_options.values()
+    and url_period != st.session_state.get("synced_period")
+):
+    st.session_state["period"] = url_period
+elif "period" not in st.session_state:
+    st.session_state["period"] = (
+        url_period if url_period in period_options.values() else "1y"
+    )
+st.session_state.setdefault("synced_period", st.session_state["period"])
 
 period = st.session_state["period"]
 
@@ -214,6 +238,17 @@ period = st.session_state["period"]
 def select_period(value: str) -> None:
     """Update the chart time range before Streamlit reruns the page."""
     st.session_state["period"] = value
+
+
+def sync_query_params(ticker_value: str, period_value: str) -> None:
+    """Keep the ?t=/&p= query params aligned with the visible chart."""
+    qp = st.query_params
+    if qp.get("t") != ticker_value:
+        qp["t"] = ticker_value
+    if qp.get("p") != period_value:
+        qp["p"] = period_value
+    st.session_state["synced_ticker"] = ticker_value
+    st.session_state["synced_period"] = period_value
 
 
 # --- Fetch data ---
@@ -721,3 +756,5 @@ if show_options and is_crypto:
     st.info("Listed options IV is not available for spot cryptocurrencies.")
 elif show_options:
     render_iv_section(ticker, latest["Close"], rv)
+
+sync_query_params(ticker, period)
