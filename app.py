@@ -64,6 +64,9 @@ def search_tickers(query: str) -> list[dict]:
 
 
 # --- Sidebar: ticker search + settings ---
+DEFAULT_TICKER = "AAPL"
+
+
 def search_symbols(query: str) -> list[tuple[str, str]]:
     """Build labeled autocomplete suggestions from Yahoo ticker matches."""
     query = query.strip()
@@ -78,6 +81,10 @@ def search_symbols(query: str) -> list[tuple[str, str]]:
         if match["exchange"]:
             label += f" ({match['exchange']})"
         suggestions.append((label, match["symbol"]))
+    # Symbols surfaced as options are safe to load when picked later.
+    st.session_state.setdefault("seen_symbols", set()).update(
+        symbol for _, symbol in suggestions
+    )
     return suggestions
 
 
@@ -87,14 +94,29 @@ with st.sidebar:
         search_symbols,
         label="Ticker or company name",
         placeholder="AAPL, BTC, Apple …",
-        help="Type a ticker (AAPL), crypto (BTC), or a company name like 'Apple'.",
-        default_searchterm="AAPL",
-        default_use_searchterm=True,
+        help="Type a ticker (AAPL), crypto (BTC), or a company name like 'Apple', then pick a suggestion.",
+        default=DEFAULT_TICKER,
         edit_after_submit="option",
         clear_on_submit=True,
         key="symbol_picker",
     )
-    ticker = normalize_ticker(selection or "AAPL")
+
+    seen_symbols = st.session_state.setdefault("seen_symbols", set())
+    ticker = st.session_state.get("active_ticker", DEFAULT_TICKER)
+
+    # Only suggestion values (or crypto aliases) trigger a load; anything
+    # else is treated as an in-progress search and keeps the current chart.
+    if selection:
+        normalized = normalize_ticker(selection)
+        if normalized in seen_symbols or normalized in CRYPTO_ALIASES.values():
+            ticker = normalized
+            seen_symbols.add(normalized)
+        else:
+            st.info(
+                f"No ticker “{normalized}” — pick a suggestion from the search bar."
+            )
+
+    st.session_state["active_ticker"] = ticker
     is_crypto = ticker in CRYPTO_ALIASES.values()
 
     st.divider()
