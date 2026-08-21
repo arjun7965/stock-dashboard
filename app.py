@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Stock Dashboard", layout="wide")
 st.title("Stock Dashboard")
@@ -34,6 +33,14 @@ def fmt_compact(value: float) -> str:
         if abs(value) >= threshold:
             return f"{value / threshold:.1f}{suffix}"
     return f"{value:,.0f}"
+
+
+def drop_tz(df: pd.DataFrame) -> pd.DataFrame:
+    """Return df with any timezone-aware DatetimeIndex made naive."""
+    idx = df.index
+    if isinstance(idx, pd.DatetimeIndex) and idx.tz is not None:
+        df.index = idx.tz_localize(None)
+    return df
 
 
 @st.cache_data(ttl=3600)
@@ -142,7 +149,10 @@ def fetch_price_data(ticker: str, period: str) -> pd.DataFrame:
         hist = tk.history(period=period)
     if hist is None or hist.empty:
         return pd.DataFrame()
-    hist.index = hist.index.tz_localize(None)
+    hist = hist.dropna(subset=["Close"])
+    if hist.empty:
+        return pd.DataFrame()
+    hist = drop_tz(hist)
     return hist
 
 
@@ -178,7 +188,8 @@ def compute_realized_vol(
     # Scale intraday windows by each market's bars per day.
     bars_per_day = {"1d": 288, "5d": 96} if is_crypto else {"1d": 78, "5d": 26}
     effective_window = window * bars_per_day.get(period, 1)
-    rv = log_returns.rolling(window=effective_window, min_periods=1).std()
+    # Require the full window so short histories yield NaN instead of noise.
+    rv = log_returns.rolling(window=effective_window, min_periods=effective_window).std()
     if annualize:
         trading_days = 365 if is_crypto else 252
         factor = trading_days * bars_per_day.get(period, 1)
@@ -224,7 +235,7 @@ def fetch_ma_data(ticker: str, ma_period: int, display_period: str) -> pd.Series
     ma_hist = tk.history(period=f"{total_days}d")
     if ma_hist is None or ma_hist.empty:
         return pd.Series(dtype=float)
-    ma_hist.index = ma_hist.index.tz_localize(None)
+    ma_hist = drop_tz(ma_hist)
     return ma_hist["Close"].rolling(ma_period).mean()
 
 if hist.empty:
@@ -264,8 +275,9 @@ st.markdown(f"## {company_name} ({ticker})")
 info_col1, info_col2, info_col3, info_col4 = st.columns(4)
 latest = hist.iloc[-1]
 prev = hist.iloc[-2] if len(hist) > 1 else latest
-change = latest["Close"] - prev["Close"]
-change_pct = (change / prev["Close"]) * 100
+prev_close = prev["Close"]
+change = latest["Close"] - prev_close
+change_pct = (change / prev_close * 100) if (prev_close and not pd.isna(prev_close)) else 0.0
 market_cap = company_info["market_cap"]
 
 info_col1.metric("Close", f"${latest['Close']:.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
@@ -283,7 +295,7 @@ def fetch_liquidity_data(ticker: str):
     if hist_30d is None or hist_30d.empty:
         return None
 
-    hist_30d.index = hist_30d.index.tz_localize(None)
+    hist_30d = drop_tz(hist_30d)
     vol = hist_30d["Volume"]
     price = hist_30d["Close"]
     dollar_vol = vol * price
@@ -591,24 +603,32 @@ rv = compute_realized_vol(
 if show_rv:
     st.subheader(f"Realized Volatility — {rv_window}d{' (annualized)' if rv_annualize else ''}")
 
-    fig_rv = go.Figure()
-    fig_rv.add_trace(
-        go.Scatter(
-            x=hist.index,
-            y=rv * 100,
-            name=f"{rv_window}d RV",
-            line=dict(color="#7e57c2", width=2),
-            fill="tozeroy",
-            fillcolor="rgba(126,87,194,0.15)",
+    # With the full-window requirement, intraday periods (and very short
+    # histories) produce no valid points at all.
+    if rv.dropna().empty:
+        st.info(
+            f"Not enough history in this range for a {rv_window}-day window "
+            "— pick a longer time range."
         )
-    )
-    fig_rv.update_layout(
-        height=350,
-        yaxis_title="Realized Vol (%)",
-        xaxis_title="Date",
-        xaxis=dict(rangebreaks=rangebreaks),
-    )
-    st.plotly_chart(fig_rv, width="stretch")
+    else:
+        fig_rv = go.Figure()
+        fig_rv.add_trace(
+            go.Scatter(
+                x=hist.index,
+                y=rv * 100,
+                name=f"{rv_window}d RV",
+                line=dict(color="#7e57c2", width=2),
+                fill="tozeroy",
+                fillcolor="rgba(126,87,194,0.15)",
+            )
+        )
+        fig_rv.update_layout(
+            height=350,
+            yaxis_title="Realized Vol (%)",
+            xaxis_title="Date",
+            xaxis=dict(rangebreaks=rangebreaks),
+        )
+        st.plotly_chart(fig_rv, width="stretch")
 
 def render_iv_section(ticker: str, spot: float, rv: pd.Series) -> None:
     """Render the IV smile chart plus ATM IV vs RV summary stats."""
