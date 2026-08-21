@@ -11,8 +11,9 @@ A Streamlit web app for charting stock and cryptocurrency price, volume, realize
 - **Candlestick chart** with 100d / 200d moving average toggle
 - **Volume bars** color-coded by price direction (green up, red down)
 - **Period selector** — 1D, 5D, 3M, 6M, 1Y, 5Y with intraday intervals for short timeframes
+- **Sidebar controls** — ticker entry and analysis settings stay out of the chart's way
 - **Realized volatility** — configurable rolling window (5–60 days), optional annualization
-- **Implied volatility smile** — calls and puts IV from nearest expiry options chain
+- **Implied volatility smile** — calls and puts IV from nearest expiry options chain, filtered to liquid strikes near the spot price
 - **IV vs RV spread** — at-the-money IV compared against current realized vol
 - **Gap-free charts** — weekends and after-hours gaps are hidden automatically
 - **BTC and ETH support** — enter `BTC` or `ETH` for 24/7 crypto charts and crypto-adjusted realized volatility

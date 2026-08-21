@@ -14,6 +14,10 @@ CRYPTO_ALIASES = {
     "ETH": "ETH-USD",
 }
 
+# Strikes within +/- this fraction of spot are kept when plotting the IV
+# smile; deep ITM/OTM quotes carry unreliable IV that squashes the curve.
+IV_STRIKE_BAND = 0.4
+
 
 def normalize_ticker(symbol: str) -> str:
     """Map common crypto symbols to their Yahoo Finance tickers."""
@@ -21,21 +25,36 @@ def normalize_ticker(symbol: str) -> str:
     return CRYPTO_ALIASES.get(normalized, normalized)
 
 
-# --- Top bar: ticker search + settings ---
-top_col1, top_col2, top_col3, top_col4, top_col5, top_col6, top_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
-ticker_input = top_col1.text_input(
-    "Ticker",
-    value="AAPL",
-    help="Enter a stock ticker, BTC, or ETH.",
-)
-ticker = normalize_ticker(ticker_input)
-is_crypto = ticker in CRYPTO_ALIASES.values()
-rv_window = top_col2.slider("RV Window (days)", 5, 60, 20)
-rv_annualize = top_col3.checkbox("Annualize RV", value=True)
-ma_period = top_col4.radio("Moving Average", [100, 200], horizontal=True)
-show_rv = top_col5.checkbox("Show Realized Vol", value=True)
-show_options = top_col6.checkbox("Show Options IV", value=True)
-show_liquidity = top_col7.checkbox("Show Liquidity", value=False)
+def fmt_compact(value: float) -> str:
+    """Format large numbers with K/M/B/T suffixes."""
+    if pd.isna(value):
+        return "N/A"
+    for threshold, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if abs(value) >= threshold:
+            return f"{value / threshold:.1f}{suffix}"
+    return f"{value:,.0f}"
+
+
+# --- Sidebar: ticker search + settings ---
+with st.sidebar:
+    st.header("Settings")
+    ticker_input = st.text_input(
+        "Ticker",
+        value="AAPL",
+        help="Enter a stock ticker, BTC, or ETH.",
+    )
+    ticker = normalize_ticker(ticker_input)
+    is_crypto = ticker in CRYPTO_ALIASES.values()
+
+    st.divider()
+    rv_window = st.slider("RV Window (days)", 5, 60, 20)
+    rv_annualize = st.checkbox("Annualize RV", value=True)
+    ma_period = st.radio("Moving Average", [100, 200], horizontal=True)
+
+    st.divider()
+    show_rv = st.checkbox("Show Realized Vol", value=True)
+    show_options = st.checkbox("Show Options IV", value=True)
+    show_liquidity = st.checkbox("Show Liquidity", value=False)
 
 
 @st.cache_data(ttl=300)
@@ -118,7 +137,8 @@ if not ticker:
     st.warning("Enter a ticker symbol.")
     st.stop()
 
-hist = fetch_price_data(ticker, period)
+with st.spinner(f"Fetching {ticker} data..."):
+    hist = fetch_price_data(ticker, period)
 
 # Fetch extended history for MA calculation on shorter periods
 @st.cache_data(ttl=300)
@@ -138,30 +158,33 @@ if hist.empty:
     st.error(f"No data found for **{ticker}**. Check the symbol and try again.")
     st.stop()
 
-# --- Fetch company name ---
+# --- Fetch company metadata ---
 @st.cache_data(ttl=3600)
-def get_company_name(ticker: str) -> str:
+def get_company_info(ticker: str) -> dict:
+    """Best-effort company display name and market cap."""
     try:
         tk = yf.Ticker(ticker)
         info = tk.info or {}
         for key in ("shortName", "longName", "displayName"):
             name = info.get(key)
             if name and name != ticker:
-                return name
+                return {"name": name, "market_cap": info.get("marketCap") or 0}
     except Exception:
         pass
     # Fallback: yf.Search (available in yfinance >= 0.2.31)
     try:
         results = yf.Search(ticker, max_results=1)
         if results.quotes:
-            name = results.quotes[0].get("shortname") or results.quotes[0].get("longname")
+            quote = results.quotes[0]
+            name = quote.get("shortname") or quote.get("longname")
             if name:
-                return name
+                return {"name": name, "market_cap": quote.get("marketCap") or 0}
     except Exception:
         pass
-    return ticker
+    return {"name": ticker, "market_cap": 0}
 
-company_name = get_company_name(ticker)
+company_info = get_company_info(ticker)
+company_name = company_info["name"]
 st.markdown(f"## {company_name} ({ticker})")
 
 # --- Company info header ---
@@ -170,11 +193,12 @@ latest = hist.iloc[-1]
 prev = hist.iloc[-2] if len(hist) > 1 else latest
 change = latest["Close"] - prev["Close"]
 change_pct = (change / prev["Close"]) * 100
+market_cap = company_info["market_cap"]
 
 info_col1.metric("Close", f"${latest['Close']:.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
-info_col2.metric("Volume", f"{latest['Volume']:,.0f}")
-info_col3.metric("Day High", f"${latest['High']:.2f}")
-info_col4.metric("Day Low", f"${latest['Low']:.2f}")
+info_col2.metric("Volume", fmt_compact(latest["Volume"]))
+info_col3.metric("Day Range", f"${latest['Low']:.2f} – ${latest['High']:.2f}")
+info_col4.metric("Market Cap", fmt_compact(market_cap) if market_cap else "N/A")
 
 
 # --- Liquidity ---
@@ -222,7 +246,7 @@ def fetch_liquidity_data(ticker: str):
 
 
 # --- Price + Volume chart ---
-st.subheader(f"{company_name} ({ticker}) — Price & Volume")
+st.subheader("Price & Volume")
 st.caption("Time range")
 period_cols = st.columns(len(period_options) + 4)  # extra cols keep the control compact
 for i, (label, value) in enumerate(period_options.items()):
@@ -252,6 +276,8 @@ fig_price.add_trace(
         low=hist["Low"],
         close=hist["Close"],
         name="Price",
+        increasing_line_color="#26a69a",
+        decreasing_line_color="#ef5350",
     ),
     row=1, col=1,
 )
@@ -291,11 +317,12 @@ fig_price.update_layout(
     height=600,
     xaxis_rangeslider_visible=False,
     showlegend=True,
+    hovermode="x unified",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
 )
 fig_price.update_xaxes(rangebreaks=rangebreaks, row=1, col=1)
 fig_price.update_xaxes(rangebreaks=rangebreaks, row=2, col=1)
-fig_price.update_yaxes(title_text="Price ($)", row=1, col=1)
+fig_price.update_yaxes(title_text="Price ($)", tickprefix="$", row=1, col=1)
 fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 
 st.plotly_chart(fig_price, use_container_width=True)
@@ -392,7 +419,7 @@ earnings_df = pd.DataFrame() if is_crypto else fetch_earnings(ticker)
 eps_hist_df = pd.DataFrame() if is_crypto else fetch_eps_history(ticker)
 
 if not earnings_df.empty or not eps_hist_df.empty:
-    st.subheader(f"{company_name} ({ticker}) — Earnings")
+    st.subheader("Earnings")
 
     if not earnings_df.empty:
         st.caption("**Revenue & Income (Last 4 Quarters)**")
@@ -433,7 +460,7 @@ if show_liquidity and is_crypto:
 elif show_liquidity:
     liq = fetch_liquidity_data(ticker)
     if liq:
-        st.subheader(f"{company_name} ({ticker}) — Liquidity")
+        st.subheader("Liquidity")
         avg_vol = liq["avg_vol_3mo"]
         sp = liq["spread_pct"]
         if avg_vol > 1_000_000 and sp < 0.1:
@@ -489,7 +516,7 @@ rv = compute_realized_vol(
 )
 
 if show_rv:
-    st.subheader(f"{company_name} ({ticker}) — Realized Volatility ({rv_window}d{'  annualized' if rv_annualize else ''})")
+    st.subheader(f"Realized Volatility — {rv_window}d{' (annualized)' if rv_annualize else ''}")
 
     fig_rv = go.Figure()
     fig_rv.add_trace(
@@ -510,71 +537,94 @@ if show_rv:
     )
     st.plotly_chart(fig_rv, use_container_width=True)
 
+def render_iv_section(ticker: str, spot: float, rv: pd.Series) -> None:
+    """Render the IV smile chart plus ATM IV vs RV summary stats."""
+    st.subheader("Implied Volatility — Nearest Expiry")
+
+    calls, puts, expiry = fetch_options_iv(ticker)
+
+    if calls is None or calls.empty:
+        st.info("No options data available for this ticker.")
+        return
+
+    st.caption(f"Options expiry: **{expiry}**")
+
+    # Filter out zero/NaN IV plus unreliable deep ITM/OTM quotes that
+    # spike the y-axis and squash the visible smile.
+    tradable_band = (spot * (1 - IV_STRIKE_BAND), spot * (1 + IV_STRIKE_BAND))
+    calls_clean = calls[
+        calls["impliedVolatility"].between(0.0001, 5)
+        & calls["strike"].between(*tradable_band)
+    ]
+    puts_clean = puts[
+        puts["impliedVolatility"].between(0.0001, 5)
+        & puts["strike"].between(*tradable_band)
+    ]
+
+    if calls_clean.empty and puts_clean.empty:
+        st.info("No reliable options data available for this ticker.")
+        return
+
+    fig_iv = go.Figure()
+
+    fig_iv.add_trace(
+        go.Scatter(
+            x=calls_clean["strike"],
+            y=calls_clean["impliedVolatility"] * 100,
+            name="Calls IV",
+            mode="lines+markers",
+            line=dict(color="#26a69a"),
+        )
+    )
+    fig_iv.add_trace(
+        go.Scatter(
+            x=puts_clean["strike"],
+            y=puts_clean["impliedVolatility"] * 100,
+            name="Puts IV",
+            mode="lines+markers",
+            line=dict(color="#ef5350"),
+        )
+    )
+
+    # Mark current price
+    fig_iv.add_vline(
+        x=spot,
+        line_dash="dash",
+        line_color="gray",
+        annotation_text=f"Spot: ${spot:.2f}",
+    )
+
+    fig_iv.update_layout(
+        height=400,
+        xaxis_title="Strike Price ($)",
+        yaxis_title="Implied Volatility (%)",
+    )
+    st.plotly_chart(fig_iv, use_container_width=True)
+
+    # IV summary stats
+    avg_atm_iv = float("nan")
+    if not calls_clean.empty:
+        atm_calls = calls_clean.iloc[
+            (calls_clean["strike"] - spot).abs().argsort()[:3]
+        ]
+        avg_atm_iv = atm_calls["impliedVolatility"].mean() * 100
+
+    iv_col1, iv_col2, iv_col3 = st.columns(3)
+    iv_col1.metric(
+        "ATM IV (approx)",
+        f"{avg_atm_iv:.1f}%" if not np.isnan(avg_atm_iv) else "N/A",
+    )
+    iv_col2.metric(
+        "Current RV",
+        f"{rv.iloc[-1] * 100:.1f}%" if not np.isnan(rv.iloc[-1]) else "N/A",
+    )
+    if not np.isnan(avg_atm_iv) and not np.isnan(rv.iloc[-1]):
+        vol_spread = avg_atm_iv - (rv.iloc[-1] * 100)
+        iv_col3.metric("IV - RV Spread", f"{vol_spread:+.1f}%")
+
+
 # --- Options IV ---
 if show_options and is_crypto:
     st.info("Listed options IV is not available for spot cryptocurrencies.")
 elif show_options:
-    st.subheader(f"{company_name} ({ticker}) — Implied Volatility (Nearest Expiry)")
-
-    calls, puts, expiry = fetch_options_iv(ticker)
-
-    if calls is not None and not calls.empty:
-        st.caption(f"Options expiry: **{expiry}**")
-
-        fig_iv = go.Figure()
-
-        # Filter out zero/NaN IV
-        calls_clean = calls[calls["impliedVolatility"] > 0]
-        puts_clean = puts[puts["impliedVolatility"] > 0]
-
-        fig_iv.add_trace(
-            go.Scatter(
-                x=calls_clean["strike"],
-                y=calls_clean["impliedVolatility"] * 100,
-                name="Calls IV",
-                mode="lines+markers",
-                line=dict(color="#26a69a"),
-            )
-        )
-        fig_iv.add_trace(
-            go.Scatter(
-                x=puts_clean["strike"],
-                y=puts_clean["impliedVolatility"] * 100,
-                name="Puts IV",
-                mode="lines+markers",
-                line=dict(color="#ef5350"),
-            )
-        )
-
-        # Mark current price
-        fig_iv.add_vline(
-            x=latest["Close"],
-            line_dash="dash",
-            line_color="gray",
-            annotation_text=f"Spot: ${latest['Close']:.2f}",
-        )
-
-        fig_iv.update_layout(
-            height=400,
-            xaxis_title="Strike Price ($)",
-            yaxis_title="Implied Volatility (%)",
-        )
-        st.plotly_chart(fig_iv, use_container_width=True)
-
-        # IV summary stats
-        atm_calls = calls_clean.iloc[
-            (calls_clean["strike"] - latest["Close"]).abs().argsort()[:3]
-        ]
-        avg_atm_iv = atm_calls["impliedVolatility"].mean() * 100
-
-        iv_col1, iv_col2, iv_col3 = st.columns(3)
-        iv_col1.metric("ATM IV (approx)", f"{avg_atm_iv:.1f}%")
-        iv_col2.metric(
-            "Current RV",
-            f"{rv.iloc[-1] * 100:.1f}%" if not np.isnan(rv.iloc[-1]) else "N/A",
-        )
-        if not np.isnan(rv.iloc[-1]) and avg_atm_iv > 0:
-            vol_spread = avg_atm_iv - (rv.iloc[-1] * 100)
-            iv_col3.metric("IV - RV Spread", f"{vol_spread:+.1f}%")
-    else:
-        st.info("No options data available for this ticker.")
+    render_iv_section(ticker, latest["Close"], rv)
