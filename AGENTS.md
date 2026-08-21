@@ -2,9 +2,9 @@
 
 ## Project Structure & Module Organization
 
-This repository is a single-file Streamlit application. `app.py` contains the UI, Yahoo Finance data access, calculations, and Plotly charts in top-to-bottom display order. `requirements.txt` pins minimum runtime dependency versions, while `README.md` documents features and deployment. `.devcontainer/devcontainer.json` defines the Python 3.11 development container and forwards Streamlit's port 8501. There are currently no separate test or static-asset directories.
+This repository is a Streamlit application split by responsibility. `app.py` holds the UI, sidebar controls, and Plotly charts in top-to-bottom display order. `data.py` wraps all Yahoo Finance access behind `@st.cache_data` fetchers, and `calcs.py` contains pure calculation helpers (`normalize_ticker`, `fmt_compact`, `compute_realized_vol`) with no Streamlit dependency, so they can be unit-tested directly. `requirements.txt` pins minimum runtime dependency versions, while `README.md` documents features and deployment. `.devcontainer/devcontainer.json` defines the Python 3.11 development container and forwards Streamlit's port 8501.
 
-Keep related fetch, calculation, and rendering logic together. If the application grows, move reusable data or calculation code into focused modules before adding more unrelated sections to `app.py`.
+Keep fetch logic in `data.py`, reusable calculations in `calcs.py`, and rendering in `app.py`. Add unit tests for pure helpers under `tests/test_*.py`.
 
 ## Build, Test, and Development Commands
 
