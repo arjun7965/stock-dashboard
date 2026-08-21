@@ -1,5 +1,6 @@
 import streamlit as st
 import yfinance as yf
+from streamlit_searchbox import st_searchbox
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
@@ -63,49 +64,38 @@ def search_tickers(query: str) -> list[dict]:
 
 
 # --- Sidebar: ticker search + settings ---
-if "symbol" not in st.session_state:
-    st.session_state["symbol"] = "AAPL"
-
-
-def pick_symbol() -> None:
-    """Load the ticker chosen from the match dropdown into the search box."""
-    symbol = st.session_state.get("match_picker")
-    if symbol:
-        st.session_state["symbol"] = symbol
-        del st.session_state["match_picker"]  # reset dropdown for next search
+def search_symbols(query: str) -> list[tuple[str, str]]:
+    """Build labeled autocomplete suggestions from Yahoo ticker matches."""
+    query = query.strip()
+    if len(query) < 2:
+        return []
+    suggestions = []
+    for match in search_tickers(query):
+        name = match["name"]
+        if len(name) > 40:
+            name = name[:37] + "…"
+        label = f"{match['symbol']} · {name}"
+        if match["exchange"]:
+            label += f" ({match['exchange']})"
+        suggestions.append((label, match["symbol"]))
+    return suggestions
 
 
 with st.sidebar:
     st.header("Settings")
-    ticker_input = st.text_input(
-        "Ticker or company name",
-        key="symbol",
-        help="Enter a ticker (AAPL), crypto (BTC), or a company name like 'Apple'.",
+    selection = st_searchbox(
+        search_symbols,
+        label="Ticker or company name",
+        placeholder="AAPL, BTC, Apple …",
+        help="Type a ticker (AAPL), crypto (BTC), or a company name like 'Apple'.",
+        default_searchterm="AAPL",
+        default_use_searchterm=True,
+        edit_after_submit="option",
+        clear_on_submit=True,
+        key="symbol_picker",
     )
-    ticker = normalize_ticker(ticker_input)
+    ticker = normalize_ticker(selection or "AAPL")
     is_crypto = ticker in CRYPTO_ALIASES.values()
-
-    query = ticker_input.strip()
-    if len(query) >= 2:
-        matches = [m for m in search_tickers(query) if m["symbol"] != ticker]
-        if matches:
-            labels = {}
-            for match in matches[:5]:
-                name = match["name"]
-                if len(name) > 40:
-                    name = name[:37] + "…"
-                label = f"{match['symbol']} · {name}"
-                if match["exchange"]:
-                    label += f" ({match['exchange']})"
-                labels[match["symbol"]] = label
-            st.selectbox(
-                "Matching symbols",
-                options=list(labels),
-                format_func=lambda symbol, _labels=labels: _labels[symbol],
-                key="match_picker",
-                index=None,
-                on_change=pick_symbol,
-            )
 
     st.divider()
     rv_window = st.slider("RV Window (days)", 5, 60, 20)

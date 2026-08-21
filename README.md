@@ -23,6 +23,7 @@ A Streamlit web app for charting stock and cryptocurrency price, volume, realize
 
 - [Streamlit](https://streamlit.io/) — web framework
 - [yfinance](https://github.com/ranaroussi/yfinance) — market data (free, no API key)
+- [streamlit-searchbox](https://github.com/m-wrzr/streamlit-searchbox) — autocomplete ticker search
 - [Plotly](https://plotly.com/python/) — interactive charts
 
 ## Run Locally
