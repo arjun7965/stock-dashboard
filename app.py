@@ -67,9 +67,12 @@ if "symbol" not in st.session_state:
     st.session_state["symbol"] = "AAPL"
 
 
-def pick_symbol(symbol: str) -> None:
-    """Replace the search box contents with a suggested ticker."""
-    st.session_state["symbol"] = symbol
+def pick_symbol() -> None:
+    """Load the ticker chosen from the match dropdown into the search box."""
+    symbol = st.session_state.get("match_picker")
+    if symbol:
+        st.session_state["symbol"] = symbol
+        del st.session_state["match_picker"]  # reset dropdown for next search
 
 
 with st.sidebar:
@@ -86,21 +89,23 @@ with st.sidebar:
     if len(query) >= 2:
         matches = [m for m in search_tickers(query) if m["symbol"] != ticker]
         if matches:
-            st.caption("Matching symbols")
+            labels = {}
             for match in matches[:5]:
                 name = match["name"]
-                if len(name) > 30:
-                    name = name[:27] + "…"
+                if len(name) > 40:
+                    name = name[:37] + "…"
                 label = f"{match['symbol']} · {name}"
                 if match["exchange"]:
                     label += f" ({match['exchange']})"
-                st.button(
-                    label,
-                    key=f"pick_{match['symbol']}",
-                    on_click=pick_symbol,
-                    args=(match["symbol"],),
-                    width="stretch",
-                )
+                labels[match["symbol"]] = label
+            st.selectbox(
+                "Matching symbols",
+                options=list(labels),
+                format_func=lambda symbol, _labels=labels: _labels[symbol],
+                key="match_picker",
+                index=None,
+                on_change=pick_symbol,
+            )
 
     st.divider()
     rv_window = st.slider("RV Window (days)", 5, 60, 20)
