@@ -70,6 +70,8 @@ with st.sidebar:
 
     seen_symbols = st.session_state.setdefault("seen_symbols", set())
     ticker = st.session_state.get("active_ticker", DEFAULT_TICKER)
+    # The active ticker has already been confirmed by construction.
+    seen_symbols.add(ticker)
 
     # Treat ?t= links (sharing or browser back/forward) as direct entries.
     url_ticker = normalize_ticker((st.query_params.get("t") or "").upper())
@@ -110,7 +112,7 @@ with st.sidebar:
     compare_with = st.text_input(
         "Compare tickers",
         placeholder="MSFT, GOOGL",
-        help="Comma-separated symbols to overlay as relative performance below the chart.",
+        help="Comma- or space-separated symbols, then press Enter.",
     )
 
 
@@ -296,7 +298,7 @@ st.download_button(
 
 # --- Compare mode ---
 compare_symbols = []
-for part in compare_with.replace(" ", "").split(","):
+for part in re.split(r"[,\s]+", compare_with.strip()):
     if part:
         symbol = normalize_ticker(part)
         if symbol != ticker and symbol not in compare_symbols:
