@@ -106,6 +106,13 @@ with st.sidebar:
     show_options = st.checkbox("Show Options IV", value=True)
     show_liquidity = st.checkbox("Show Liquidity", value=False)
 
+    st.divider()
+    compare_with = st.text_input(
+        "Compare tickers",
+        placeholder="MSFT, GOOGL",
+        help="Comma-separated symbols to overlay as relative performance below the chart.",
+    )
+
 
 period_options = {
     "1D": "1d",
@@ -286,6 +293,53 @@ st.download_button(
     file_name=f"{ticker}_{period}_history.csv",
     mime="text/csv",
 )
+
+# --- Compare mode ---
+compare_symbols = []
+for part in compare_with.replace(" ", "").split(","):
+    if part:
+        symbol = normalize_ticker(part)
+        if symbol != ticker and symbol not in compare_symbols:
+            compare_symbols.append(symbol)
+compare_symbols = compare_symbols[:3]
+
+if compare_symbols:
+    candidates = [ticker] + compare_symbols
+    st.subheader(f"Relative Performance vs {ticker}")
+    palette = ["#26a69a", "#7e57c2", "#ef5350", "#f9a825"]
+    fig_cmp = go.Figure()
+    plotted = 0
+    for i, symbol in enumerate(candidates):
+        cmp_hist = hist if symbol == ticker else fetch_price_data(symbol, period)
+        if cmp_hist is None or cmp_hist.empty:
+            continue
+        closes = cmp_hist["Close"]
+        base_close = closes.iloc[0]
+        if not base_close or pd.isna(base_close):
+            continue
+        fig_cmp.add_trace(
+            go.Scatter(
+                x=closes.index,
+                y=(closes / base_close - 1) * 100,
+                name=symbol,
+                line=dict(color=palette[i % len(palette)], width=2),
+            )
+        )
+        plotted += 1
+
+    if plotted <= 1:
+        st.info("No matching data found for the comparison tickers.")
+    else:
+        fig_cmp.add_hline(y=0, line_dash="dot", line_color="gray")
+        # Mixed crypto/equity calendars have incompatible gaps.
+        all_equity = all(s not in CRYPTO_ALIASES.values() for s in candidates)
+        fig_cmp.update_layout(
+            height=350,
+            hovermode="x unified",
+            yaxis_title="Change since start (%)",
+            xaxis=dict(rangebreaks=rangebreaks if all_equity else []),
+        )
+        st.plotly_chart(fig_cmp, width="stretch")
 
 # --- Earnings (last 4 quarters) ---
 earnings_df = pd.DataFrame() if is_crypto else fetch_earnings(ticker)

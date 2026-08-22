@@ -16,6 +16,9 @@ A Streamlit web app for charting stock and cryptocurrency price, volume, realize
 - **Realized volatility** — configurable rolling window (5–60 days), optional annualization
 - **Implied volatility smile** — calls and puts IV from nearest expiry options chain, filtered to liquid strikes near the spot price
 - **IV vs RV spread** — at-the-money IV compared against current realized vol
+- **Key stats header** — 52-week range position, P/E ratio, beta, and dividend yield
+- **CSV export** — one-click download of the displayed price history
+- **Compare mode** — overlay up to three extra tickers as normalized performance
 - **Gap-free charts** — weekends and after-hours gaps are hidden automatically
 - **BTC and ETH support** — enter `BTC` or `ETH` for 24/7 crypto charts and crypto-adjusted realized volatility
 
