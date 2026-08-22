@@ -94,16 +94,36 @@ def fetch_options_iv(ticker: str):
     return calls, puts, expirations[0]
 
 
+def _numeric_stats(info: dict) -> dict:
+    """Extract display stats from a yfinance info dict; None when missing."""
+    def num(key):
+        val = info.get(key)
+        try:
+            return float(val) if val is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    market_cap = num("marketCap")
+    return {
+        "market_cap": market_cap or 0,
+        "week_52_low": num("fiftyTwoWeekLow"),
+        "week_52_high": num("fiftyTwoWeekHigh"),
+        "pe_ratio": num("trailingPE"),
+        "beta": num("beta"),
+        "dividend_rate": num("dividendRate"),
+    }
+
+
 @st.cache_data(ttl=3600)
 def get_company_info(ticker: str) -> dict:
-    """Best-effort company display name and market cap."""
+    """Best-effort company display name and key statistics."""
     try:
         tk = yf.Ticker(ticker)
         info = tk.info or {}
         for key in ("shortName", "longName", "displayName"):
             name = info.get(key)
             if name and name != ticker:
-                return {"name": name, "market_cap": info.get("marketCap") or 0}
+                return {"name": name, **_numeric_stats(info)}
     except Exception:
         pass
     # Fallback: yf.Search (available in yfinance >= 0.2.31)
@@ -113,10 +133,10 @@ def get_company_info(ticker: str) -> dict:
             quote = results.quotes[0]
             name = quote.get("shortname") or quote.get("longname")
             if name:
-                return {"name": name, "market_cap": quote.get("marketCap") or 0}
+                return {"name": name, **_numeric_stats(quote)}
     except Exception:
         pass
-    return {"name": ticker, "market_cap": 0}
+    return {"name": ticker, **_numeric_stats({})}
 
 
 @st.cache_data(ttl=300)

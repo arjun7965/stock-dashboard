@@ -179,6 +179,24 @@ info_col2.metric("Volume", fmt_compact(latest["Volume"]))
 info_col3.metric("Day Range", f"${latest['Low']:.2f} – {latest['High']:.2f}")
 info_col4.metric("Market Cap", fmt_compact(market_cap) if market_cap else "N/A")
 
+wk_low = company_info.get("week_52_low")
+wk_high = company_info.get("week_52_high")
+pe_ratio = company_info.get("pe_ratio")
+beta = company_info.get("beta")
+dividend_rate = company_info.get("dividend_rate")
+
+stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+if wk_low and wk_high:
+    range_span = wk_high - wk_low
+    position = (latest["Close"] - wk_low) / range_span * 100 if range_span > 0 else 50
+    stat_col1.metric("52W Range", f"${wk_low:.2f} – {wk_high:.2f}", f"{position:+.0f}% of range")
+else:
+    stat_col1.metric("52W Range", "N/A")
+stat_col2.metric("P/E Ratio", f"{pe_ratio:.1f}" if pe_ratio is not None else "N/A")
+stat_col3.metric("Beta", f"{beta:.2f}" if beta is not None else "N/A")
+div_yield = (dividend_rate / latest["Close"] * 100) if dividend_rate and latest["Close"] else None
+stat_col4.metric("Div Yield", f"{div_yield:.2f}%" if div_yield else "N/A")
+
 
 # --- Price + Volume chart ---
 st.subheader("Price & Volume")
