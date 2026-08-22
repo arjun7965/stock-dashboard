@@ -280,6 +280,13 @@ fig_price.update_yaxes(title_text="Volume", row=2, col=1)
 
 st.plotly_chart(fig_price, width="stretch")
 
+st.download_button(
+    "Download price history (CSV)",
+    data=hist[["Open", "High", "Low", "Close", "Volume"]].to_csv(index_label="Date"),
+    file_name=f"{ticker}_{period}_history.csv",
+    mime="text/csv",
+)
+
 # --- Earnings (last 4 quarters) ---
 earnings_df = pd.DataFrame() if is_crypto else fetch_earnings(ticker)
 eps_hist_df = pd.DataFrame() if is_crypto else fetch_eps_history(ticker)
